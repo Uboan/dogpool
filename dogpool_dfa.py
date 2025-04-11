@@ -77,6 +77,7 @@ class Acquisition:
                 start_from_left=True,
                 depth_first_traversal=False,
                 faults=4,
+                faultval=1,
                 minfaultspercol=4,
                 timeoutfactor=2,
                 savetraces_format='default',
@@ -95,6 +96,7 @@ class Acquisition:
         self.outputbeforelastrounds=outputbeforelastrounds
         self.encrypt=encrypt
         self.shell=shell
+        self.faultval = faultval # fixing input fault
         if self.verbose>1:
             print("Initializing...")
         # Challenge binary
@@ -179,14 +181,17 @@ class Acquisition:
 
     def savedefault(self):
         tracefiles=([], [])
+        print("len of encpairs")
+        print(len(self.encpairs))
         for goodpairs, mode in [(self.encpairs, "enc")]:
             if len(goodpairs) > 1:
                 tracefile='dfa_%s_%s-%s_%i.txt' % (mode, self.inittimestamp, datetime.datetime.now().strftime('%H%M%S'), len(goodpairs))
                 print('Saving %i traces in %s' % (len(goodpairs), tracefile))
                 with open(tracefile, 'wb') as f:
                     for (iblock, oblock) in goodpairs:
-                        f.write(('%0*X  ' % (int(self.blocksize/2), iblock)).encode('utf8'))
-                        f.write(('%0*X %0*X\n' % (int(self.blocksize/2), oblock[0], int(self.blocksize/2), oblock[1])).encode('utf8'))
+                        f.write(('%0*X  ' % (8, iblock)).encode('utf8'))
+                        f.write(('%0*X %0*X   ' % (4, oblock[0], 4, oblock[1])).encode('utf8'))
+                        f.write(('right diff:%0*X\n' % (4,self.correctct[1]^oblock[1])).encode('utf8'))
                 tracefiles[mode=="dec"].append(tracefile)
         return tracefiles
 
@@ -212,11 +217,11 @@ class Acquisition:
                         trs.write(iblock.to_bytes(self.blocksize,'big')+oblock.to_bytes(self.blocksize,'big'))
                 tracefiles[mode=="dec"].append(trsfile)
         return tracefiles
-#？？？？李春？
+
     def doit(self, table, processed_input, protect=True, init=False, lastroundkeys=None):
         input_stdin, input_args_int = processed_input
         input_args=[]
-        right_diff=None
+        diff=None
         for i in input_args_int:
             input_args.append(str(i))
         if input_stdin is None:
@@ -244,7 +249,7 @@ class Acquisition:
                 proc = subprocess.Popen([self.targetbin] + input_args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, errs = proc.communicate(input=input_stdin, timeout=self.timeout)
         except OSError:
-            return (None, self.FaultStatus.Crash,right_diff)
+            return (None, self.FaultStatus.Crash,None)
         except subprocess.TimeoutExpired:
             proc.terminate()
             try:
@@ -253,7 +258,7 @@ class Acquisition:
                 proc.kill()
             except:
                 pass
-            return (None, self.FaultStatus.Loop,right_diff)
+            return (None, self.FaultStatus.Loop,None)
         if self.debug:
             print(output)
         if protect:
@@ -266,22 +271,22 @@ class Acquisition:
             print(oblock)
             sys.exit(0)
         if oblock is None:
-            return (None, self.FaultStatus.Crash,right_diff)
+            return (None, self.FaultStatus.Crash,None)
         if len(oblock) != 2:
-            return (None, self.FaultStatus.Crash,right_diff)
+            return (None, self.FaultStatus.Crash,None)
         else:
             # print(type(oblock))
             # print(len(oblock))
             
             # oblock = self.dfa.int2bytes(oblock)
             # oblocktmp = self.dfa.rewind(oblock, lastroundkeys, self.encrypt)
-            status,right_diff=self.dfa.check(oblock, self.encrypt, self.verbose, init)
+            status,diff=self.dfa.check(oblock, self.encrypt, self.verbose, init)
             
             # print("status:"+str(status))
             # oblock = oblocktmp if self.outputbeforelastrounds else oblock
             # oblock = self.dfa.bytes2int(oblock)
         # return (oblock, status, index) # in the case of SPECK, we dont need index and other shits
-        return oblock, status,right_diff
+        return oblock, status,diff
 
     def splitrange(self, r, mincut=1):
         x,y=r
@@ -311,7 +316,7 @@ class Acquisition:
             if type(faults) is list:
                 fault=faults[0]
             else:
-                faultval = random.randint(1,255)
+                faultval = self.faultval #random.randint(1,255)
                 fault=('xor', lambda x: x ^ faultval)
             if self.start_from_left:
                 r=tree.popleft()
@@ -326,7 +331,7 @@ class Acquisition:
                         level+=1
                     breadth_first_level_address = r[1]
             table=self.inject(r, fault[1])
-            oblock,status,right_diff = self.doit(table, self.processed_input)
+            oblock,status,diff = self.doit(table, self.processed_input)
             
             log='Lvl %03i [0x%08X-0x%08X[ %s 0x%02X %0*X ->' % (level, r[0], r[1], fault[0], fault[1](0), int(self.blocksize), self.iblock)
             if oblock is not None:
@@ -334,7 +339,8 @@ class Acquisition:
                 log+=' %0*X' % (int(self.blocksize/2), oblock[1])
             log+=' '+status.name
             if status in [self.FaultStatus.GoodEncFault]:
-                log+=' right_diff:'+str(right_diff)
+                log+=' left_diff:'+str(diff[0])
+                log+=' right_diff:'+str(diff[1])
                 self.faultycts.append(oblock)
             # print(log)
             if self.verbose>1:
@@ -538,6 +544,7 @@ class Acquisition:
             self.logfile=open(self.logfilename, 'w')
         if self.addresses is None:
             self.tabletree=deque(self.splitrange((0, len(self.goldendata))))
+            print(self.tabletree)
         elif type(self.addresses) is str:
             self.tabletree=deque()
             with open(self.addresses, 'r') as reflog:
@@ -549,7 +556,7 @@ class Acquisition:
         # Prepare golden output
         starttime=time.time()
         
-        oblock,status,right_diff=self.doit(self.goldendata, self.processed_input, protect=False, init=True) #SPECK
+        oblock,status,diff=self.doit(self.goldendata, self.processed_input, protect=False, init=True) #SPECK
         # print(status)
         # Set timeout = N times normal execution time
         self.timeout=(time.time()-starttime)*self.timeoutfactor
@@ -564,6 +571,7 @@ class Acquisition:
         self.dig()
         print(len(self.encpairs))
         tracefiles=self.savetraces()
+        # tracefiles=None
         os.remove(self.targetdata)
         self.logfile.close()
         return tracefiles,self.correctct,self.faultycts
