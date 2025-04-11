@@ -319,9 +319,12 @@ def check(output, encrypt=None, verbose=1, init=False, _intern={}):
     
     # print(len(output))
     # print(len(_intern['goldenref']))
+    faudiff = output[0]^output[1]
+    cordiff = _intern['goldenref'][0]^_intern['goldenref'][1]
+    # diff.append(output[0]^output[1])
     diff.append(output[0]^_intern['goldenref'][0])
-    diff.append(output[1]^_intern['goldenref'][1])
+    diff.append(cordiff^faudiff)
     # print("diff:"+str(diff))
     if diff[0]== diff[1] == 0:
         return FaultStatus.NoFault,None
-    return FaultStatus.GoodEncFault,diff[1]
+    return FaultStatus.GoodEncFault,diff
