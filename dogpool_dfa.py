@@ -1,25 +1,3 @@
-#########################################################################
-# deadpool_dfa is a Python 3 library to help faulting implementations   #
-# of whiteboxes and convert their outputs into traces compatible with   #
-# DFA tools such as JeanGrey or Riscure Inspector.                      #
-#                                                                       #
-# Copyright (C) 2016                                                    #
-# Original author:   Phil Teuwen <phil@teuwen.org>                      #
-# Contributors:                                                         #
-#                                                                       #
-# This program is free software: you can redistribute it and/or modify  #
-# it under the terms of the GNU General Public License as published by  #
-# the Free Software Foundation, either version 3 of the License, or     #
-# any later version.                                                    #
-#                                                                       #
-# This program is distributed in the hope that it will be useful,       #
-# but WITHOUT ANY WARRANTY; without even the implied warranty of        #
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         #
-# GNU General Public License for more details.                          #
-#                                                                       #
-# You should have received a copy of the GNU General Public License     #
-# along with this program.  If not, see <http://www.gnu.org/licenses/>. #
-#########################################################################
 
 import os
 import sys
@@ -63,7 +41,32 @@ def try_processoutput(processoutput):
         except:
             return None
     return foo
+from collections import defaultdict
+def group_from_aligned_lists(correct_list, faulty_list, output_file="grouped_output.txt"):
+    assert len(correct_list) == len(faulty_list), "List lengths must match."
 
+    groups = defaultdict(list)
+
+    for c, c_star in zip(correct_list, faulty_list):
+        R = c[1]
+        R_star = c_star[1]
+        diffl = c[0]^c_star[0]
+        
+        diff = R ^ R_star^diffl
+        groups[diff].append((c, c_star))
+
+    with open(output_file, "w") as f:
+        for diff, pair_list in sorted(groups.items()):
+            
+            f.write(f"diff in the right: {hex(diff)}\n")
+            for c, cf in pair_list:
+                f.write(f"{c},#")
+                f.write(f"diff in the left: {hex(c[0]^cf[0])}\n")
+            for _, c_star in pair_list:
+                f.write(f"{c_star},\n")
+            f.write("\n")  # separate groups
+
+    print(f"Grouped results written to {output_file}")
 class Acquisition:
     def __init__(self, targetbin, targetdata, goldendata, dfa,
                 iblock=0x74657374746573747465737474657374,
@@ -89,7 +92,9 @@ class Acquisition:
                 debug=False):
         self.digcount = 0
         self.correctct=[]
+        self.correctcts=[]
         self.faultycts=[]
+        self.fixedtable = None
         self.debug=debug
         self.verbose=verbose
         self.tolerate_error=tolerate_error
@@ -218,12 +223,15 @@ class Acquisition:
                 tracefiles[mode=="dec"].append(trsfile)
         return tracefiles
 
-    def doit(self, table, processed_input, protect=True, init=False, lastroundkeys=None):
+    def doit(self, table, processed_input, protect=True, init=False, lastroundkeys=None,counter=0):
         input_stdin, input_args_int = processed_input
         input_args=[]
         diff=None
         for i in input_args_int:
+            i+=counter
             input_args.append(str(i))
+        # print("input:"+str(input_args))
+        # print(input_args)
         if input_stdin is None:
             input_stdin=b''
         if input_args is None:
@@ -301,7 +309,61 @@ class Acquisition:
         return dq
 
     def inject(self, r, faultfct):
-        return self.goldendata[:r[0]]+bytes([faultfct(x) for x in self.goldendata[r[0]:r[1]]])+self.goldendata[r[1]:]
+        
+        # print("In function inject()")
+        # print(sys.getsizeof(self.goldendata[r[0]:r[1]]))
+    
+        return self.goldendata[:r[0]]+bytes([faultfct(x) for x in self.goldendata[r[0]:r[0]+1]])+self.goldendata[r[0]+1:] # 
+
+        # if r[1]<r[0]+self.minleafnail:
+        return self.goldendata[:r[0]]+bytes([faultfct(x) for x in self.goldendata[r[0]:r[1]]])+self.goldendata[r[1]:] #
+
+        # return self.goldendata[:r[0]]+bytes([faultfct(x) for x in self.goldendata[r[0]:r[1]]])+self.goldendata[r[1]:] # 
+    
+    
+    
+    def inject_byte(self, r, faultfct):
+        
+        # self.goldendata[r[0]]^=faultval
+        # return self.goldendata[:r[0]]+self.goldendata[r[0]+1:] #injects a value 
+
+        # if r[1]<r[0]+self.minleafnail:
+        return self.goldendata[:r[0]]+bytes([faultfct(x) for x in self.goldendata[r[0]:r[0]+1]])+bytes([faultfct(x) for x in self.goldendata[r[0]:r[1]]])+self.goldendata[r[1]:] #
+
+        # return self.goldendata[:r[0]]+bytes([faultfct(x) for x in self.goldendata[r[0]:r[1]]])+self.goldendata[r[1]:] #
+
+
+    def inject_bit_level(self, r, bit_index, mode="flip"):
+
+        if isinstance(r, int):
+            r = (r, r + 1)
+
+        assert r[1] > r[0], "illegal range"
+        print("len:"+str(hex(len(self.goldendata))))
+        # print("r[0]"+str(hex(r[0])))
+        # print("r[1]"+str(hex(r[1])))
+        assert r[1] <= len(self.goldendata), "out of list"
+        assert 0 <= bit_index <= 7, "bit_index should be in [0,7]"
+
+        data = bytearray(self.goldendata)  # copy data
+        print("-------new----------")
+        for i in range(r[0], r[1]):
+            
+            original = data[i]
+            if mode == "flip":
+                data[i] ^= (1 << (7 - bit_index))
+                print("inject_bit_level:"+str(data[i])+" Y "+str(self.goldendata[i])+" = "+str(bin((data[i])^self.goldendata[i])))
+                # print("inject_bit_level:"+str(self.goldendata[i]))
+                break
+            elif mode == "set":
+                data[i] |= (1 << (7 - bit_index))
+            elif mode == "clear":
+                data[i] &= ~(1 << (7 - bit_index))
+            elif mode == "mask":
+                data[i] &= (1 << (7 - bit_index))
+            else:
+                raise ValueError(f"unknown: {mode}")
+        return bytes(data)
 
     def dig(self, tree=None, faults=None, level=0, candidates=[]):
         # print("level:"+str(level))
@@ -313,12 +375,17 @@ class Acquisition:
             breadth_first_level_address=None
         while len(tree)>0:
             # print(len(tree))
+
             if type(faults) is list:
                 fault=faults[0]
             else:
                 faultval = self.faultval #random.randint(1,255)
+                
+                # fault=('and', lambda x: x & faultval)
                 fault=('xor', lambda x: x ^ faultval)
             if self.start_from_left:
+                print("if"+str(hex(len(tree))))
+
                 r=tree.popleft()
                 if not self.depth_first_traversal:
                     if breadth_first_level_address is not None and r[0] < breadth_first_level_address:
@@ -330,7 +397,14 @@ class Acquisition:
                     if breadth_first_level_address is not None and r[1] > breadth_first_level_address:
                         level+=1
                     breadth_first_level_address = r[1]
-            table=self.inject(r, fault[1])
+            print("--r[0]"+str(hex(r[0])))
+            print("--r[1]"+str(hex(r[1])))
+            # table=self.inject(r, fault[1])
+            table = self.inject_bit_level(r,1)
+            
+            # print("comparison:")
+            # print(len(table)-len(self.goldendata))
+            
             oblock,status,diff = self.doit(table, self.processed_input)
             
             log='Lvl %03i [0x%08X-0x%08X[ %s 0x%02X %0*X ->' % (level, r[0], r[1], fault[0], fault[1](0), int(self.blocksize), self.iblock)
@@ -343,7 +417,7 @@ class Acquisition:
                 log+=' right_diff:'+str(diff[1])
                 self.faultycts.append(oblock)
             # print(log)
-            if self.verbose>1:
+            if self.verbose>41:
                 print(log)
             if status in [self.FaultStatus.NoFault, self.FaultStatus.MinorFault]:
                 continue
@@ -382,7 +456,7 @@ class Acquisition:
                     else:
                         while len(mycandidates)>0:
                             txt,pair = mycandidates.pop(0)
-                            if self.verbose>0:
+                            if self.verbose>41:
                                 print(txt+' Logged')
                             if status is self.FaultStatus.GoodEncFault:
                                 if pair not in self.encpairs:
@@ -391,6 +465,54 @@ class Acquisition:
                                     # print("--------------")
                                     self.encpairs.append(pair)
                                     # self.encstatus[index]+=1
+
+
+                                    diffls = []
+                                    diffrs = []
+                                    mark = 0
+                                    print("what")
+                                    print("difference = "+str(diff))
+                                    for i in range(50):
+                                        oblockct=oblockft=None
+                                        oblockct,statusct,diffct=self.doit(self.goldendata, self.processed_input, protect=False, init=False,counter=i) #SPECK
+                                        oblockft,statusft,diffft=self.doit(table, self.processed_input, protect=False, init=False,counter=i) #SPECK
+                                        # if statusft == self.FaultStatus.GoodEncFault:
+                                            
+                                        #     print("good fault")
+                                        if oblockft == None or oblockct == None or statusft is not self.FaultStatus.GoodEncFault:
+                                            continue
+                                        
+                                        diffr = oblockct[0]^oblockct[1]^oblockft[0]^oblockft[1]
+                                        diffl = oblockct[0]^oblockft[0]
+                                        if diffr != 0 and diffl == 0:                                            
+                                            mark=1
+                                        if diffr == 0:
+                                            continue
+                                        diffls.append(diffl)
+                                        diffrs.append(diffr)
+                                        print("check:["+str(hex(oblockct[0]))+","+str(hex(oblockct[1]))+"],"+"["+str(hex(oblockft[0]))+","+str(hex(oblockft[1]))+"]"+"         "+str(hex(diffl))+","+str(hex(diffr)))
+                                        # if diff == 0x0101:
+                                        #     print(diffr)
+                                        
+                                    if len(diffrs)>len(set(diffrs)) and len(diffls)==len(set(diffls)):
+                                        self.fixedtable = table
+                                        print("found!")
+                                        print("found!")
+
+                                        print("found!")
+
+                                        print("found!")
+
+                                        print("found!")
+
+                                        print("found!")
+                                        return True
+
+
+
+
+
+
                                 if self.minfaultspercol is not None:
                                     return True
                             # else:
@@ -420,118 +542,7 @@ class Acquisition:
                     continue
         return False
     
-    # def old_dig(self, tree=None, faults=None, level=0, candidates=[]):
-    #     print("level:"+str(level))
-    #     if tree is None:
-    #         tree=self.tabletree
-    #     if faults is None:
-    #         faults=self.faults
-    #     if not self.depth_first_traversal:
-    #         breadth_first_level_address=None
-    #     while len(tree)>0:
-    #         if type(faults) is list:
-    #             fault=faults[0]
-    #         else:
-    #             faultval = random.randint(1,255)
-    #             fault=('xor', lambda x: x ^ faultval)
-    #         if self.start_from_left:
-    #             r=tree.popleft()
-    #             if not self.depth_first_traversal:
-    #                 if breadth_first_level_address is not None and r[0] < breadth_first_level_address:
-    #                     level+=1
-    #                 breadth_first_level_address = r[0]
-    #         else:
-    #             r=tree.pop()
-    #             if not self.depth_first_traversal:
-    #                 if breadth_first_level_address is not None and r[1] > breadth_first_level_address:
-    #                     level+=1
-    #                 breadth_first_level_address = r[1]
-    #         table=self.inject(r, fault[1])
-    #         oblock,status,right_diff = self.doit(table, self.processed_input)
-            
-    #         log='Lvl %03i [0x%08X-0x%08X[ %s 0x%02X %0*X ->' % (level, r[0], r[1], fault[0], fault[1](0), int(self.blocksize), self.iblock)
-    #         if oblock is not None:
-    #             log+=' %0*X' % (int(self.blocksize/2), oblock[0])
-    #             log+=' %0*X' % (int(self.blocksize/2), oblock[1])
-    #         log+=' '+status.name
-    #         if status in [self.FaultStatus.GoodEncFault]:
-    #             log+=' right_diff:'+str(right_diff)
-    #         # print(log)
-    #         if self.verbose>1:
-    #             print(log)
-    #         if status in [self.FaultStatus.NoFault, self.FaultStatus.MinorFault]:
-    #             continue
-    #         elif status in [self.FaultStatus.GoodEncFault, self.FaultStatus.GoodDecFault]:
-    #             # if status is self.FaultStatus.GoodEncFault and self.minfaultspercol is not None:
-    #             #     # self.digcount+=1
-    #             #     # print("continue")
-    #             #     continue
-    #             # if status is self.FaultStatus.GoodDecFault and self.minfaultspercol is not None and self.decstatus[index] >= self.minfaultspercol:
-    #             #     continue
-    #             # print(r[1]>r[0]+self.minleafnail)
-    #             if r[1]>r[0]+self.minleafnail:
-    #                 # Nailing phase: always depth-first is ok
-    #                 if self.verbose>2:
-    #                     print('Nailing [0x%08X-0x%08X[' % (r[0], r[1]))
-    #                 del(table)
-    #                 if self.dig(self.splitrange(r), faults, level+1):
-                        
-    #                     return True
-    #                 continue
-    #             else:
-    #                 print("shit")
-    #                 # exit(0)
-    #                 mycandidates=candidates+[(log, (self.iblock, oblock))]
-    #                 print(mycandidates)
-    #                 if type(faults) is list and len(faults)>1:
-    #                     del(table)
-    #                     if self.dig(deque([r]), faults[1:], level, mycandidates):
-    #                         return True
-    #                     continue
-    #                 elif type(faults) is int and faults>1:
-    #                     del(table)
-    #                     if self.dig(deque([r]), faults-1, level, mycandidates):
-    #                         return True
-    #                     continue
-    #                 else:
-    #                     while len(mycandidates)>0:
-    #                         txt,pair = mycandidates.pop(0)
-    #                         if self.verbose>0:
-    #                             print(txt+' Logged')
-    #                         if status is self.FaultStatus.GoodEncFault:
-    #                             if pair not in self.encpairs:
-    #                                 print(pair)
-    #                                 self.encpairs.append(pair)
-    #                                 # self.encstatus[index]+=1
-    #                             if self.minfaultspercol is not None:
-    #                                 return True
-    #                         else:
-    #                             if pair not in self.decpairs:
-    #                                 self.decpairs.append(pair)
-    #                                 # self.decstatus[index]+=1
-    #                             if self.minfaultspercol is not None:
-    #                                 return True
-    #                         self.logfile.write(txt+'\n')
-    #                     self.logfile.flush()
-    #                     continue
-    #         elif status in [self.FaultStatus.MajorFault, self.FaultStatus.Loop, self.FaultStatus.Crash]:
-    #             if r[1]>r[0]+self.minleaf:
-    #                 if self.depth_first_traversal:
-    #                     del(table)
-    #                     if self.dig(self.splitrange(r), faults, level+1):
-    #                         return True
-    #                     continue
-    #                 else: # breadth-first traversal
-    #                     if self.start_from_left:
-    #                         tree.extend(self.splitrange(r))
-    #                         continue
-    #                     else:
-    #                         tree.extendleft(reversed(self.splitrange(r)))
-    #                         continue
-    #             else:
-    #                 continue
-    #     return False
-
+    
     def run(self, lastroundkeys=[], encrypt=None):
         if encrypt is not None and self.encrypt is not None:
             assert self.encrypt==encrypt
@@ -544,7 +555,7 @@ class Acquisition:
             self.logfile=open(self.logfilename, 'w')
         if self.addresses is None:
             self.tabletree=deque(self.splitrange((0, len(self.goldendata))))
-            print(self.tabletree)
+            # print(self.tabletree)
         elif type(self.addresses) is str:
             self.tabletree=deque()
             with open(self.addresses, 'r') as reflog:
@@ -569,9 +580,59 @@ class Acquisition:
         # self.decstatus=[0,0,0,0]
         # print(len(self.encpairs))
         self.dig()
-        print(len(self.encpairs))
-        tracefiles=self.savetraces()
-        # tracefiles=None
+        
+        if self.fixedtable is not None:
+            i=0
+            ii=77
+            diffs = []
+            correctcts = []
+            faultycts = []
+            flag = 0
+            with open("record_file.txt","w") as f:
+                while(i<50):
+                    
+                    oblockct,statusct,diffct=self.doit(self.goldendata, self.processed_input, protect=False,counter=ii) #SPECK
+                    oblockft,statusft,diffft=self.doit(self.fixedtable, self.processed_input, protect=False,counter=ii) #SPECK
+                    if oblockft == None or oblockct==None:
+                        continue
+                    diff = oblockct[0]^oblockct[1]^oblockft[0]^oblockft[1]
+                    diffl = oblockct[0]^oblockct[1]
+                    # diffs.append(diff)
+                
+                    if diff!=0:
+                        # print("correct:"+str(oblockct))
+                        # print("faulty:"+str(oblockft))
+                        # print(diff)
+                        print("in porcess----"+str(ii-899)+"-------:"+str(i))
+                        f.write(f"correct:")
+                        f.write(f"{oblockct}\n")
+                        f.write(f"faulty:")
+                        f.write(f"{oblockft}\n")
+                        # f.write(f"diff:")
+                        f.write(f"{diff}\n")
+                        diffs.append(diff)
+                        
+                        self.correctcts.append(oblockct) 
+                        self.faultycts.append(oblockft)
+                        correctcts.append(oblockct) 
+                        faultycts.append(oblockft)
+                        if diffl!=0 and diff!=0:
+                            i+=1
+                            # print("found"+str(i))
+                    ii+=1
+            
+                # for q in range(i):
+                    
+                    # f.write(f"correct:")
+                    # f.write(f"{correctcts[q]}\n")
+                    # f.write(f"faulty:")
+                    # f.write(f"{faultycts[q]}\n")
+                    # # f.write(f"diff:")
+                    # f.write(f"{diff[q]}\n")
+                    
+            group_from_aligned_lists(correctcts,faultycts,"text.txt")
+        # tracefiles=self.savetraces()
+        tracefiles=None
         os.remove(self.targetdata)
         self.logfile.close()
-        return tracefiles,self.correctct,self.faultycts
+        return tracefiles,self.correctcts,self.faultycts,self.fixedtable
