@@ -1,0 +1,132 @@
+diff in the right: 0x35a0
+[54627, 12242],#diff in the left: 0xc37e
+[32184, 53672],#diff in the left: 0x117e
+[41098, 49860],#diff in the left: 0x6c5e
+[44737, 36595],#diff in the left: 0x497e
+[5661, 55564],
+[27846, 62838],
+[52436, 39738],
+[59327, 61997],
+
+diff in the right: 0x35e0
+[29185, 19753],#diff in the left: 0xb42
+[19810, 5583],#diff in the left: 0x128e
+[15130, 1947],#diff in the left: 0xa76
+[31043, 29579],
+[24556, 12961],
+[12652, 14349],
+
+diff in the right: 0x4a60
+[21981, 11784],#diff in the left: 0x6b3b
+[16102, 3923],
+
+diff in the right: 0x5460
+[31294, 45767],#diff in the left: 0xf5b2
+[36748, 4885],
+
+diff in the right: 0x5560
+[12033, 18184],#diff in the left: 0x4472
+[29864, 38390],#diff in the left: 0xf576
+[25663, 51193],#diff in the left: 0xf506
+[21376, 5663],#diff in the left: 0xc906
+[64199, 5144],#diff in the left: 0x2382
+[27507, 22042],
+[33246, 13792],
+[37177, 26527],
+[39558, 35449],
+[55621, 25338],
+
+diff in the right: 0x55a0
+[34080, 43933],#diff in the left: 0xe956
+[28442, 25573],#diff in the left: 0xda46
+[53381, 53114],#diff in the left: 0x2032
+[55622, 33593],#diff in the left: 0x1376
+[19984, 58220],#diff in the left: 0x2676
+[12956, 17772],#diff in the left: 0xd84e
+[50708, 417],#diff in the left: 0xc092
+[53878, 8303],#diff in the left: 0x5952
+[19775, 40985],#diff in the left: 0x29b6
+[64386, 42131],#diff in the left: 0xd24e
+[35642, 14983],#diff in the left: 0x2666
+[27766, 5995],
+[46428, 60419],
+[61623, 47848],
+[51760, 50671],
+[26726, 37050],
+[60114, 51330],
+[1670, 38035],
+[35620, 11421],
+[25737, 56335],
+[10700, 9085],
+[44380, 18753],
+
+diff in the right: 0x55e0
+[34398, 14530],#diff in the left: 0xb16
+[22125, 37569],#diff in the left: 0x5a
+[52737, 1098],#diff in the left: 0x3692
+[41223, 43013],#diff in the left: 0x2056
+[38935, 15283],#diff in the left: 0xfa96
+[36168, 26164],
+[22071, 51067],
+[63635, 26424],
+[33105, 56755],
+[25217, 38085],
+
+diff in the right: 0x7560
+[50815, 64315],#diff in the left: 0x7c16
+[47721, 62029],
+
+diff in the right: 0x75a0
+[550, 56387],#diff in the left: 0x5b1a
+[45345, 47060],#diff in the left: 0xdd5e
+[17617, 48464],#diff in the left: 0xd116
+[33966, 45102],#diff in the left: 0x1b66
+[15160, 48241],#diff in the left: 0x10a2
+[22844, 62201],
+[27775, 7978],
+[38343, 6630],
+[40904, 57064],
+[11162, 55667],
+
+diff in the right: 0x75e0
+[36476, 63213],#diff in the left: 0x3e8e
+[29733, 60686],#diff in the left: 0x3e2a
+[43505, 24567],#diff in the left: 0x7e46
+[52874, 46874],#diff in the left: 0x3d8e
+[47342, 58347],#diff in the left: 0x7e4a
+[3076, 22631],#diff in the left: 0x3b86
+[45298, 48515],
+[18959, 42692],
+[55223, 21585],
+[62212, 65396],
+[50852, 59457],
+[14210, 5633],
+
+diff in the right: 0xb463
+[41076, 12320],#diff in the left: 0x8df2
+[11654, 2481],
+
+diff in the right: 0xb5a0
+[4444, 57527],#diff in the left: 0x6e1a
+[11150, 37141],#diff in the left: 0x6c52
+[32582, 15117],
+[18396, 18663],
+
+diff in the right: 0xb5a1
+[62404, 22455],#diff in the left: 0x8ebe
+[3431, 63341],#diff in the left: 0x139a
+[32122, 27816],
+[7933, 20822],
+
+diff in the right: 0xb5e0
+[56770, 10335],#diff in the left: 0xcd16
+[4308, 20649],
+
+diff in the right: 0xb5e1
+[9004, 15395],#diff in the left: 0xd2e
+[11778, 34028],
+
+diff in the right: 0xb5e3
+[24073, 64453],#diff in the left: 0xe9b2
+[47035, 42900],
+
