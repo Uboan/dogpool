@@ -223,18 +223,18 @@ def add_matrix_mult_constraint(solver, n, matrix, x, y):
         solver: Z3 solver
         n:      dim of the vector and matrix
         matrix: n x n matrix
-        x:      输入向量（BitVec类型）
-        y:      输出向量（BitVec类型）
+        x:      input 
+        y:      output
     """
     for i in range(n):
-        # 构建每个输出位的表达式
-        bit_expr = BitVecVal(0, 1)  # 初始化0值（1位宽）
+        # construct expression for each bit
+        bit_expr = BitVecVal(0, 1)  # 
         for j in range(n):
-            # 提取x的第j位
+            # extract the j-th bit of x
             x_bit = Extract(j, j, x)
-            # 计算与矩阵元素的按位与
+            # 
             and_term = matrix[i][j] & x_bit
-            # 累积异或操作
+            # 
             bit_expr = bit_expr ^ and_term
          solver.add(Extract(i, i, y) == bit_expr)
       
@@ -271,11 +271,11 @@ def MFDDFA_EX(N,M,correctCtxt,faultyCtxt,r=SPECKROUNDS-1):# multi-fixed differen
             xafterEN= BitVec(('xafterEN' + str(SPECKROUNDS-1)),WORDSIZE)
             yafterEN= BitVec(('yafterEN' + str(SPECKROUNDS-1)),WORDSIZE)
                             
-            x1 = BitVec(('x'+str(m)+'_'+str(i)+'c_' + str(r)),WORDSIZE)
-            y1 = BitVec(('y'+str(m)+'_'+str(i)+'c_' + str(r)),WORDSIZE) 
+            # x1 = BitVec(('x'+str(m)+'_'+str(i)+'c_' + str(r)),WORDSIZE)
+            # y1 = BitVec(('y'+str(m)+'_'+str(i)+'c_' + str(r)),WORDSIZE) 
             
-            xc = x1 
-            yc = y1
+            xc = None
+            yc = None
             for rc in range(r,SPECKROUNDS):  
                 if(rc==r):                 
                     xc = BitVec(('x'+str(m)+'_'+str(i)+'c_' + str(rc)),WORDSIZE)
@@ -285,7 +285,8 @@ def MFDDFA_EX(N,M,correctCtxt,faultyCtxt,r=SPECKROUNDS-1):# multi-fixed differen
                 yc = BitVec(('y'+str(m)+'_'+str(i)+'c_' + str(rc+1)),WORDSIZE)
 
                 # Add external encoding part
-              
+                
+                add_matrix_mult_constraint(model, n, EXK_matrix, x, y)
                 model.add(xc==xafterEN)
                 model.add(yc==yafterEN)
 
@@ -352,4 +353,5 @@ fct =[[
 [14210, 5633],
 ]]
 MFDDFA(len(cct[0]),1,cct,fct,SPECKROUNDS-1)
+
 
