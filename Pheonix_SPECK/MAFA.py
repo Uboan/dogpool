@@ -216,6 +216,120 @@ def MFDDFA(N,M,correctCtxt,faultyCtxt,r=SPECKROUNDS-1):# multi-fixed difference 
         return 1
     print("Attack time:%.2f"%(timeend-timestart))
     
+def add_matrix_mult_constraint(solver, n, matrix, x, y):
+    """
+    add mult constraints y = matrix * x 
+    para：
+        solver: Z3 solver
+        n:      dim of the vector and matrix
+        matrix: n x n matrix
+        x:      输入向量（BitVec类型）
+        y:      输出向量（BitVec类型）
+    """
+    for i in range(n):
+        # 构建每个输出位的表达式
+        bit_expr = BitVecVal(0, 1)  # 初始化0值（1位宽）
+        for j in range(n):
+            # 提取x的第j位
+            x_bit = Extract(j, j, x)
+            # 计算与矩阵元素的按位与
+            and_term = matrix[i][j] & x_bit
+            # 累积异或操作
+            bit_expr = bit_expr ^ and_term
+         solver.add(Extract(i, i, y) == bit_expr)
+      
+def MFDDFA_EX(N,M,correctCtxt,faultyCtxt,r=SPECKROUNDS-1):# multi-fixed difference fault analysis on WB-SPECK with external encoding  
+                                                          # where M is the number of different fixed fault
+                                                          # where N is the number of ciphertexts pairs for each fixed fault
+                                                          # correctCtxt and faultyCtxt are correct and faulty ciphertexts set (3-dim list)          
+                                                          # r is the number of targeted round
+    model = Solver()
+    
+    # lastRK = BitVec(('lastRK' ),WORDSIZE) # variables for last round key 
+    # In the attack on implementations with external encodings, 
+    #   the whole last affine layer should be modeled (containing the round key and unknown output external encoding). 
+    n = 2*WORDSIZE
+    EXK_matrix = [[BitVec(f'EXKM_{i}_{j}', 1) for j in range(n)] for i in range(n)]  # 2*WORDSIZE binary matrix in the composition of key and external encoding 
+    EXK_avec = BitVec(('EXK_affineVec'), n) # 2*WORDSIZE binary vector in the composition of key and external encoding 
+    faultmsX = []
+    timestart = time.time()
+    
+    for m in range(M):
+        
+        correctYR = correctCtxt[m][0][0]^correctCtxt[m][0][1]
+        correctYR_1 = RotRshift(correctYR,BEITA)
+        faultyYR = faultyCtxt[m][0][0]^faultyCtxt[m][0][1]
+        faultyYR_1 = RotRshift(faultyYR,BEITA)
+        faultMasky = (correctYR_1^faultyYR_1 )&MODMASK
+        
+        print("faultMasky"+str(faultMasky))
+        faultmsx = BitVec(('faultmsX_'+str(m)),WORDSIZE)
+        faultmsX.append(faultmsx)
+        
+        for i in range(0,N):
+
+            xafterEN= BitVec(('xafterEN' + str(SPECKROUNDS-1)),WORDSIZE)
+            yafterEN= BitVec(('yafterEN' + str(SPECKROUNDS-1)),WORDSIZE)
+                            
+            x1 = BitVec(('x'+str(m)+'_'+str(i)+'c_' + str(r)),WORDSIZE)
+            y1 = BitVec(('y'+str(m)+'_'+str(i)+'c_' + str(r)),WORDSIZE) 
+            
+            xc = x1 
+            yc = y1
+            for rc in range(r,SPECKROUNDS):  
+                if(rc==r):                 
+                    xc = BitVec(('x'+str(m)+'_'+str(i)+'c_' + str(rc)),WORDSIZE)
+                    yc = BitVec(('y'+str(m)+'_'+str(i)+'c_' + str(rc)),WORDSIZE)
+                xafterEN,yafterEN = GenENRdES(xc,yc,str(m)+str(i)+'c',rc,lastRK,model) # // #2
+                xc = BitVec(('x'+str(m)+'_'+str(i)+'c_' + str(rc+1)),WORDSIZE)
+                yc = BitVec(('y'+str(m)+'_'+str(i)+'c_' + str(rc+1)),WORDSIZE)
+
+                # Add external encoding part
+              
+                model.add(xc==xafterEN)
+                model.add(yc==yafterEN)
+
+            model.add((correctCtxt[m][i][0]) ==xafterEN)
+            model.add(correctCtxt[m][i][1]==yafterEN)
+            x2 = BitVec(('x'+str(m)+'_'+str(i)+'f_' + str(r)),WORDSIZE)
+            y2 = BitVec(('y'+str(m)+'_'+str(i)+'f_' + str(r)),WORDSIZE)
+            xf = x2 
+            yf = y2
+            for rc in range(r,SPECKROUNDS): 
+                if(rc==r):                  
+                                
+                    xf = BitVec(('x'+str(m)+'_'+str(i)+'f_' + str(rc)),WORDSIZE)
+                    yf = BitVec(('y'+str(m)+'_'+str(i)+'f_' + str(rc)),WORDSIZE)
+                xafterEN,yafterEN = GenENRdES(xf,yf,str(m)+str(i)+'f',rc,lastRK,model) # // #2
+                xf = BitVec(('x'+str(m)+'_'+str(i)+'f_' + str(rc+1)),WORDSIZE)
+                yf = BitVec(('y'+str(m)+'_'+str(i)+'f_' + str(rc+1)),WORDSIZE)
+                model.add(xf==xafterEN)
+                model.add(yf==yafterEN)
+            
+            model.add(faultyCtxt[m][i][0]==xafterEN)
+            model.add(faultyCtxt[m][i][1]==yafterEN)
+            
+            model.add(faultmsX[m]==(x1^x2))
+            
+            model.add(faultMasky==(y1^y2))  #// #4  assume that y is fixed, becuz the differential of y is known
+            
+            
+
+    count = 0
+    while model.check() == sat:
+        count=count+1
+        print("sat:")
+        print (model.model()[lastRK])
+        
+        # print (bin(model.model()[lastRK]))
+        model.add(lastRK!=model.model()[lastRK])
+    print("the number of solution:"+str(count))
+    timeend = time.time()
+    if(count==0):
+        print("unsat")
+        return 1
+    print("Attack time:%.2f"%(timeend-timestart))
+    
  
 
 
@@ -238,3 +352,4 @@ fct =[[
 [14210, 5633],
 ]]
 MFDDFA(len(cct[0]),1,cct,fct,SPECKROUNDS-1)
+
